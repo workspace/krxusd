@@ -31,7 +31,7 @@ services:
       krxusd-db:
         condition: service_healthy
       krxusd-redis:
-        condition: service_started
+        condition: service_healthy
     networks:
       - krxusd-network
 
@@ -43,12 +43,14 @@ services:
       - POSTGRES_USER=krxusd
       - POSTGRES_PASSWORD=krxusd
       - POSTGRES_DB=krxusd
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - krxusd-db-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U krxusd"]
+      test: ["CMD-SHELL", "pg_isready -U krxusd -d krxusd"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -63,7 +65,13 @@ services:
       - "6379:6379"
     volumes:
       - krxusd-redis-data:/data
-    command: redis-server --appendonly yes
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - krxusd-network
 

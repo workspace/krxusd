@@ -1,4 +1,10 @@
-from .stock import Stock, StockPrice
+from .stock import Stock, StockPrice, SyncStatus, PopularStock
 from .exchange import ExchangeRate
 
-__all__ = ["Stock", "StockPrice", "ExchangeRate"]
+__all__ = [
+    "Stock",
+    "StockPrice",
+    "SyncStatus",
+    "PopularStock",
+    "ExchangeRate",
+]

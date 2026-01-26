@@ -10,6 +10,7 @@ pydantic-settings==2.5.2
 # Async Database
 asyncpg==0.29.0
 sqlalchemy[asyncio]==2.0.35
+alembic==1.14.0
 
 # Redis
 redis==5.1.1
