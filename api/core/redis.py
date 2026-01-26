@@ -227,13 +227,13 @@ class ExchangeRateCache:
     실시간 환율 데이터 캐시
 
     Key: krxusd:exchange:realtime
-    TTL: 120초 (2분)
+    TTL: 60초 (1분) - 1분 단위 업데이트
     """
 
     def __init__(self):
         self.realtime_key = "krxusd:exchange:realtime"
         self.minute_prefix = "krxusd:exchange:minute"
-        self.ttl = 120
+        self.ttl = 60  # 1 minute - matches update frequency
 
     async def get_realtime(self) -> dict | None:
         """Get current exchange rate"""

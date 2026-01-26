@@ -7,7 +7,16 @@ from .stock import (
     StockPriceResponse,
     StockDetailResponse,
 )
-from .exchange import ExchangeRateBase, ExchangeRateResponse
+from .exchange import (
+    ExchangeRateBase,
+    ExchangeRateResponse,
+    ExchangeRateRealtimeResponse,
+    ExchangeRateSyncRequest,
+    ExchangeRateSyncResponse,
+    ExchangeRateHistoryRequest,
+    ConvertCurrencyRequest,
+    ConvertCurrencyResponse,
+)
 
 __all__ = [
     # Common
@@ -24,4 +33,10 @@ __all__ = [
     # Exchange
     "ExchangeRateBase",
     "ExchangeRateResponse",
+    "ExchangeRateRealtimeResponse",
+    "ExchangeRateSyncRequest",
+    "ExchangeRateSyncResponse",
+    "ExchangeRateHistoryRequest",
+    "ConvertCurrencyRequest",
+    "ConvertCurrencyResponse",
 ]
