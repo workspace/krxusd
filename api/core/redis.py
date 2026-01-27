@@ -506,6 +506,93 @@ class SchedulerStateCache:
         return [json_loads(h) for h in history]
 
 
+class BatchUpdateStateCache:
+    """
+    일일 배치 업데이트 상태 관리 캐시
+
+    Key: krxusd:batch:state - 현재 배치 업데이트 상태
+    Key: krxusd:batch:history - 배치 업데이트 실행 기록
+    TTL: 7일 (히스토리 보관)
+    """
+
+    def __init__(self):
+        self.state_key = "krxusd:batch:state"
+        self.history_key = "krxusd:batch:history"
+        self.ttl = 604800  # 7일
+
+    async def set_state(
+        self,
+        status: str,  # "idle", "running", "completed", "failed"
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        target_date: date | None = None,
+        progress: dict | None = None,
+        result: dict | None = None,
+        error: str | None = None,
+    ) -> None:
+        """배치 업데이트 상태 저장"""
+        client = await get_redis()
+        data = {
+            "status": status,
+            "started_at": started_at.isoformat() if started_at else None,
+            "completed_at": completed_at.isoformat() if completed_at else None,
+            "target_date": target_date.isoformat() if target_date else None,
+            "progress": progress,
+            "result": result,
+            "error": error,
+            "updated_at": datetime.now().isoformat(),
+        }
+        await client.set(self.state_key, json_dumps(data), ex=self.ttl)
+
+    async def get_state(self) -> dict | None:
+        """배치 업데이트 상태 조회"""
+        client = await get_redis()
+        value = await client.get(self.state_key)
+        return json_loads(value) if value else None
+
+    async def add_history(
+        self,
+        run_date: date,
+        duration_ms: int,
+        stocks_count: int,
+        success_count: int,
+        failed_count: int,
+        success: bool,
+        error: str | None = None,
+    ) -> None:
+        """배치 업데이트 실행 기록 추가 (최근 30개 유지)"""
+        client = await get_redis()
+        data = {
+            "run_date": run_date.isoformat(),
+            "run_time": datetime.now().isoformat(),
+            "duration_ms": duration_ms,
+            "stocks_count": stocks_count,
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "success": success,
+            "error": error,
+        }
+        # 최신 기록을 앞에 추가
+        await client.lpush(self.history_key, json_dumps(data))
+        # 최근 30개만 유지 (약 1개월)
+        await client.ltrim(self.history_key, 0, 29)
+        await client.expire(self.history_key, self.ttl)
+
+    async def get_history(self, limit: int = 10) -> list[dict]:
+        """최근 실행 기록 조회"""
+        client = await get_redis()
+        history = await client.lrange(self.history_key, 0, limit - 1)
+        return [json_loads(h) for h in history]
+
+    async def get_last_success_date(self) -> date | None:
+        """마지막 성공한 배치 업데이트 날짜 조회"""
+        history = await self.get_history(limit=30)
+        for record in history:
+            if record.get("success"):
+                return date.fromisoformat(record["run_date"])
+        return None
+
+
 # Singleton instances
 cache = RedisCache()
 stock_realtime_cache = StockRealtimeCache()
@@ -515,3 +602,4 @@ popular_stocks_cache = PopularStocksCache()
 market_status_cache = MarketStatusCache()
 active_symbols_cache = ActiveSymbolsCache()
 scheduler_state_cache = SchedulerStateCache()
+batch_update_state_cache = BatchUpdateStateCache()

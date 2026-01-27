@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     scheduler_max_batch_size: int = 20  # 한 번에 업데이트할 최대 종목 수
     scheduler_active_symbol_ttl_seconds: int = 180  # 조회 중인 종목 TTL (3분)
 
+    # Daily Batch Update Settings (장 마감 후 인기 종목 배치 업데이트)
+    scheduler_daily_batch_hour: int = 16  # 배치 실행 시간 (KST)
+    scheduler_daily_batch_minute: int = 0  # 배치 실행 분
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
