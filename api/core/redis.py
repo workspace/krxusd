@@ -346,6 +346,166 @@ class MarketStatusCache:
         await client.set(self.key, json_dumps(data), ex=self.ttl)
 
 
+class ActiveSymbolsCache:
+    """
+    사용자가 현재 조회 중인 종목 추적 캐시
+
+    Key: krxusd:active:symbols
+    Structure: Set (각 심볼에 TTL로 자동 만료)
+
+    Redis Set을 사용하여 현재 조회 중인 종목을 추적합니다.
+    각 종목은 마지막 조회 시간을 score로 하는 Sorted Set으로 관리되어
+    오래된 항목은 자동으로 비활성화 처리됩니다.
+    """
+
+    def __init__(self):
+        self.key = "krxusd:active:symbols"
+        self.ttl = 180  # 3분 (사용자가 페이지를 떠난 후 3분 동안 유지)
+
+    async def add(self, symbol: str) -> None:
+        """
+        심볼을 활성 목록에 추가 (현재 시간을 score로 사용)
+
+        사용자가 종목 상세 페이지를 조회할 때 호출됩니다.
+        """
+        client = await get_redis()
+        now = datetime.now().timestamp()
+        await client.zadd(self.key, {symbol.upper(): now})
+
+    async def remove(self, symbol: str) -> None:
+        """심볼을 활성 목록에서 제거"""
+        client = await get_redis()
+        await client.zrem(self.key, symbol.upper())
+
+    async def get_active_symbols(self, max_age_seconds: int | None = None) -> list[str]:
+        """
+        현재 활성화된 심볼 목록 조회
+
+        Args:
+            max_age_seconds: 이 시간(초) 내에 조회된 심볼만 반환.
+                            None이면 TTL(3분) 이내 모든 심볼 반환.
+
+        Returns:
+            활성 심볼 목록
+        """
+        client = await get_redis()
+
+        if max_age_seconds is None:
+            max_age_seconds = self.ttl
+
+        # 현재 시간 기준으로 max_age_seconds 이내의 심볼만 조회
+        min_score = datetime.now().timestamp() - max_age_seconds
+
+        # ZRANGEBYSCORE로 최근 활성 심볼만 가져옴
+        symbols = await client.zrangebyscore(self.key, min_score, "+inf")
+        return [s for s in symbols]
+
+    async def cleanup_stale(self) -> int:
+        """
+        TTL이 지난 오래된 심볼 제거
+
+        Returns:
+            제거된 심볼 수
+        """
+        client = await get_redis()
+        cutoff = datetime.now().timestamp() - self.ttl
+        # score가 cutoff보다 작은 항목 제거
+        removed = await client.zremrangebyscore(self.key, "-inf", cutoff)
+        return removed
+
+    async def get_count(self) -> int:
+        """현재 활성 심볼 수 조회"""
+        client = await get_redis()
+        min_score = datetime.now().timestamp() - self.ttl
+        return await client.zcount(self.key, min_score, "+inf")
+
+    async def refresh(self, symbol: str) -> None:
+        """
+        심볼의 마지막 조회 시간을 갱신
+
+        사용자가 계속 페이지에 머무르고 있을 때 호출됩니다.
+        """
+        await self.add(symbol)
+
+    async def is_active(self, symbol: str) -> bool:
+        """심볼이 현재 활성 상태인지 확인"""
+        client = await get_redis()
+        min_score = datetime.now().timestamp() - self.ttl
+        score = await client.zscore(self.key, symbol.upper())
+        if score is None:
+            return False
+        return score >= min_score
+
+
+class SchedulerStateCache:
+    """
+    스케줄러 상태 관리 캐시
+
+    Key: krxusd:scheduler:state
+    스케줄러의 실행 상태, 마지막 실행 시간 등을 저장합니다.
+    """
+
+    def __init__(self):
+        self.key = "krxusd:scheduler:state"
+        self.history_key = "krxusd:scheduler:history"
+        self.ttl = 86400  # 24시간
+
+    async def set_state(
+        self,
+        is_running: bool,
+        last_run_at: datetime | None = None,
+        next_run_at: datetime | None = None,
+        stocks_updated: int = 0,
+        exchange_updated: bool = False,
+    ) -> None:
+        """스케줄러 상태 저장"""
+        client = await get_redis()
+        data = {
+            "is_running": is_running,
+            "last_run_at": last_run_at.isoformat() if last_run_at else None,
+            "next_run_at": next_run_at.isoformat() if next_run_at else None,
+            "stocks_updated": stocks_updated,
+            "exchange_updated": exchange_updated,
+            "updated_at": datetime.now().isoformat(),
+        }
+        await client.set(self.key, json_dumps(data), ex=self.ttl)
+
+    async def get_state(self) -> dict | None:
+        """스케줄러 상태 조회"""
+        client = await get_redis()
+        value = await client.get(self.key)
+        return json_loads(value) if value else None
+
+    async def add_run_history(
+        self,
+        run_time: datetime,
+        duration_ms: int,
+        stocks_count: int,
+        success: bool,
+        error: str | None = None,
+    ) -> None:
+        """스케줄러 실행 기록 추가 (최근 100개 유지)"""
+        client = await get_redis()
+        data = {
+            "run_time": run_time.isoformat(),
+            "duration_ms": duration_ms,
+            "stocks_count": stocks_count,
+            "success": success,
+            "error": error,
+        }
+        # 최신 기록을 앞에 추가
+        await client.lpush(self.history_key, json_dumps(data))
+        # 최근 100개만 유지
+        await client.ltrim(self.history_key, 0, 99)
+        await client.expire(self.history_key, self.ttl)
+
+    async def get_run_history(self, limit: int = 10) -> list[dict]:
+        """최근 실행 기록 조회"""
+        client = await get_redis()
+        history = await client.lrange(self.history_key, 0, limit - 1)
+        return [json_loads(h) for h in history]
+
+
 # Singleton instances
 cache = RedisCache()
 stock_realtime_cache = StockRealtimeCache()
@@ -353,3 +513,5 @@ stock_minute_cache = StockMinuteCache()
 exchange_rate_cache = ExchangeRateCache()
 popular_stocks_cache = PopularStocksCache()
 market_status_cache = MarketStatusCache()
+active_symbols_cache = ActiveSymbolsCache()
+scheduler_state_cache = SchedulerStateCache()

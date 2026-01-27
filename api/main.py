@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +8,9 @@ from api.core.config import settings
 from api.core.database import close_db, init_db
 from api.core.redis import close_redis, init_redis
 from api.routers import api_router
+from api.services.scheduler_service import init_scheduler, shutdown_scheduler
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -15,8 +19,19 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
     await init_redis()
+
+    # Initialize scheduler
+    if settings.scheduler_enabled:
+        await init_scheduler()
+        logger.info("Realtime data scheduler initialized")
+
     yield
+
     # Shutdown
+    if settings.scheduler_enabled:
+        await shutdown_scheduler()
+        logger.info("Realtime data scheduler shut down")
+
     await close_db()
     await close_redis()
 

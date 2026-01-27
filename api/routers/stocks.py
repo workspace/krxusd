@@ -43,6 +43,7 @@ from api.services.stock_service import (
     StockNotFoundError,
     StockDataFetchError,
 )
+from api.services.scheduler_service import register_active_symbol
 
 router = APIRouter()
 
@@ -122,6 +123,8 @@ async def get_stock(
     Get detailed stock information by symbol.
 
     Returns stock master data along with the latest price and market cap.
+
+    Note: This endpoint automatically registers the symbol for realtime updates.
     """
     query = select(Stock).where(Stock.symbol == symbol.upper())
     result = await db.execute(query)
@@ -129,6 +132,9 @@ async def get_stock(
 
     if not stock:
         raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+
+    # Register symbol for realtime updates (scheduler will update this symbol)
+    await register_active_symbol(symbol)
 
     # Get latest price
     price_query = (
@@ -216,7 +222,12 @@ async def get_realtime_price(
     - Includes USD conversion using current exchange rate
 
     Sources: FinanceDataReader (primary), Yahoo Finance (backup)
+
+    Note: This endpoint automatically registers the symbol for realtime updates.
     """
+    # Register symbol for realtime updates
+    await register_active_symbol(symbol)
+
     service = StockDataService(db)
 
     try:

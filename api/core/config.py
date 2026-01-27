@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     # API Settings
     api_v1_prefix: str = "/api/v1"
 
+    # Scheduler Settings
+    scheduler_enabled: bool = True
+    scheduler_realtime_interval_seconds: int = 60  # 1분 단위 업데이트
+    scheduler_popular_stocks_interval_seconds: int = 300  # 5분 단위 인기 종목 업데이트
+    scheduler_max_batch_size: int = 20  # 한 번에 업데이트할 최대 종목 수
+    scheduler_active_symbol_ttl_seconds: int = 180  # 조회 중인 종목 TTL (3분)
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
