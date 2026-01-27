@@ -107,6 +107,24 @@ class PopularStocksResponse(BaseModel):
     total_unique: int
 
 
+class PopularStockDetailItem(BaseModel):
+    """인기 종목 상세 정보"""
+    symbol: str
+    name: str
+    market: str
+    market_cap_krw: float | None = None
+    market_cap_usd: float | None = None
+    volume: int | None = None
+
+
+class PopularStocksDetailResponse(BaseModel):
+    """인기 종목 상세 목록 응답 (시가총액 USD 환산 포함)"""
+    market_cap: list[PopularStockDetailItem]
+    volume: list[PopularStockDetailItem]
+    exchange_rate: float | None = None
+    updated_at: str
+
+
 @router.get(
     "/status",
     response_model=SchedulerStatusResponse,
@@ -343,3 +361,120 @@ async def get_batch_target_stocks() -> PopularStocksResponse:
         volume=volume,
         total_unique=total_unique,
     )
+
+
+@router.get(
+    "/batch/popular-stocks/detail",
+    response_model=PopularStocksDetailResponse,
+    summary="인기 종목 상세 정보 조회 (시가총액 USD 환산 포함)",
+    description="인기 종목의 시가총액, 거래량 정보를 USD 환산 값과 함께 조회합니다.",
+)
+async def get_popular_stocks_with_detail() -> PopularStocksDetailResponse:
+    """
+    인기 종목 상세 정보 조회
+
+    시가총액/거래량 상위 종목의 상세 정보를 USD 환산 값과 함께 반환합니다.
+    - 종목 코드, 이름, 시장
+    - 시가총액 (KRW, USD)
+    - 거래량
+    - 현재 환율
+    """
+    from datetime import datetime
+    import FinanceDataReader as fdr
+    from api.core.redis import exchange_rate_cache
+
+    try:
+        # KOSPI와 KOSDAQ 종목 리스트 가져오기
+        kospi = fdr.StockListing("KOSPI")
+        kosdaq = fdr.StockListing("KOSDAQ")
+
+        # 데이터 병합
+        all_stocks = []
+        if not kospi.empty:
+            kospi_data = kospi.copy()
+            kospi_data["Market"] = "KOSPI"
+            all_stocks.append(kospi_data)
+        if not kosdaq.empty:
+            kosdaq_data = kosdaq.copy()
+            kosdaq_data["Market"] = "KOSDAQ"
+            all_stocks.append(kosdaq_data)
+
+        if not all_stocks:
+            return PopularStocksDetailResponse(
+                market_cap=[],
+                volume=[],
+                exchange_rate=None,
+                updated_at=datetime.now().isoformat(),
+            )
+
+        import pandas as pd
+        df = pd.concat(all_stocks, ignore_index=True)
+
+        # 컬럼명 정규화
+        code_col = "Code" if "Code" in df.columns else "Symbol"
+        name_col = "Name" if "Name" in df.columns else "종목명"
+        cap_col = "Marcap" if "Marcap" in df.columns else "MarketCap"
+        volume_col = "Volume" if "Volume" in df.columns else "거래량"
+        market_col = "Market"
+
+        # 환율 조회
+        exchange_data = await exchange_rate_cache.get_realtime()
+        exchange_rate = float(exchange_data["rate"]) if exchange_data else None
+
+        # 시가총액 상위 종목
+        market_cap_list = []
+        if cap_col in df.columns and code_col in df.columns:
+            df_cap = df.dropna(subset=[cap_col])
+            df_cap = df_cap.sort_values(cap_col, ascending=False).head(10)
+
+            for _, row in df_cap.iterrows():
+                cap_krw = float(row[cap_col]) if pd.notna(row.get(cap_col)) else None
+                cap_usd = cap_krw / exchange_rate if cap_krw and exchange_rate else None
+                vol = int(row.get(volume_col, 0)) if pd.notna(row.get(volume_col)) else None
+
+                market_cap_list.append(PopularStockDetailItem(
+                    symbol=str(row[code_col]),
+                    name=str(row.get(name_col, row[code_col])),
+                    market=str(row.get(market_col, "KOSPI")),
+                    market_cap_krw=cap_krw,
+                    market_cap_usd=cap_usd,
+                    volume=vol,
+                ))
+
+        # 거래량 상위 종목
+        volume_list = []
+        if volume_col in df.columns and code_col in df.columns:
+            df_vol = df.dropna(subset=[volume_col])
+            df_vol = df_vol.sort_values(volume_col, ascending=False).head(10)
+
+            for _, row in df_vol.iterrows():
+                cap_krw = float(row[cap_col]) if pd.notna(row.get(cap_col)) else None
+                cap_usd = cap_krw / exchange_rate if cap_krw and exchange_rate else None
+                vol = int(row.get(volume_col, 0)) if pd.notna(row.get(volume_col)) else None
+
+                volume_list.append(PopularStockDetailItem(
+                    symbol=str(row[code_col]),
+                    name=str(row.get(name_col, row[code_col])),
+                    market=str(row.get(market_col, "KOSPI")),
+                    market_cap_krw=cap_krw,
+                    market_cap_usd=cap_usd,
+                    volume=vol,
+                ))
+
+        return PopularStocksDetailResponse(
+            market_cap=market_cap_list,
+            volume=volume_list,
+            exchange_rate=exchange_rate,
+            updated_at=datetime.now().isoformat(),
+        )
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to get popular stocks detail: {e}")
+        return PopularStocksDetailResponse(
+            market_cap=[],
+            volume=[],
+            exchange_rate=None,
+            updated_at=datetime.now().isoformat(),
+        )

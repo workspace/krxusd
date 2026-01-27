@@ -5,4 +5,4 @@ export {
   useStockRealtimePrice,
   useStocksRealtimePriceBatch,
 } from "./useStocks";
-export { useMarketStatus, usePopularStocks } from "./useMarket";
+export { useMarketStatus, usePopularStocks, usePopularStocksDetail } from "./useMarket";

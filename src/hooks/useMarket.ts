@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getMarketStatus, getPopularStocks } from "@/lib/api";
+import { getMarketStatus, getPopularStocks, getPopularStocksDetail } from "@/lib/api";
 
 export function useMarketStatus() {
   return useQuery({
@@ -24,6 +24,20 @@ export function usePopularStocks() {
       const response = await getPopularStocks();
       if (!response.success || !response.data) {
         throw new Error(response.message || "Failed to fetch popular stocks");
+      }
+      return response.data;
+    },
+    refetchInterval: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+export function usePopularStocksDetail() {
+  return useQuery({
+    queryKey: ["market", "popular", "detail"],
+    queryFn: async () => {
+      const response = await getPopularStocksDetail();
+      if (!response.success || !response.data) {
+        throw new Error(response.message || "Failed to fetch popular stocks detail");
       }
       return response.data;
     },
