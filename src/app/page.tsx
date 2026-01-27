@@ -1,48 +1,70 @@
-import { Card, CardBody, CardHeader } from "@heroui/react";
+"use client";
+
+import { Divider } from "@heroui/react";
+import {
+  ExchangeRateCard,
+  KospiIndexCard,
+  KosdaqIndexCard,
+  PopularStocksList,
+  MarketStatusBadge,
+} from "@/components";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-background p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-center mb-8">KRXUSD</h1>
-        <p className="text-center text-default-500 mb-12">
-          한국 주식을 달러로 확인하세요
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
-              <p className="text-tiny uppercase font-bold">현재 환율</p>
-              <h4 className="font-bold text-large">USD/KRW</h4>
-            </CardHeader>
-            <CardBody className="py-4">
-              <p className="text-3xl font-semibold">₩1,450.00</p>
-              <p className="text-small text-success">+0.5%</p>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
-              <p className="text-tiny uppercase font-bold">KOSPI</p>
-              <h4 className="font-bold text-large">종합지수</h4>
-            </CardHeader>
-            <CardBody className="py-4">
-              <p className="text-3xl font-semibold">2,650.00</p>
-              <p className="text-small text-default-500">$1.83B</p>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
-              <p className="text-tiny uppercase font-bold">KOSDAQ</p>
-              <h4 className="font-bold text-large">종합지수</h4>
-            </CardHeader>
-            <CardBody className="py-4">
-              <p className="text-3xl font-semibold">850.00</p>
-              <p className="text-small text-default-500">$0.59B</p>
-            </CardBody>
-          </Card>
+    <main className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-divider">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                KRXUSD
+              </h1>
+              <p className="text-small text-default-500 mt-1">
+                Korean Stocks in USD - Real-time Price Tracking
+              </p>
+            </div>
+            <MarketStatusBadge />
+          </div>
         </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Hero Section - Exchange Rate & Market Indices */}
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold text-default-700 mb-4">
+            Market Overview
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <ExchangeRateCard />
+            <KospiIndexCard />
+            <KosdaqIndexCard />
+          </div>
+        </section>
+
+        <Divider className="my-6 sm:my-8" />
+
+        {/* Popular Stocks Section */}
+        <section>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="lg:col-span-2">
+              <PopularStocksList />
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="mt-12 pt-6 border-t border-divider">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-small text-default-400">
+            <p>
+              Data provided for informational purposes only. Not financial advice.
+            </p>
+            <p>
+              Sources: FinanceDataReader, Yahoo Finance
+            </p>
+          </div>
+        </footer>
       </div>
     </main>
   );
