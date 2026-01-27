@@ -32,6 +32,10 @@ from api.schemas.stock import (
     StockBatchSyncRequest,
     StockBatchSyncResponse,
     SyncStatusResponse,
+    DataSummaryResponse,
+    SyncRangeInfo,
+    GapAnalysisResponse,
+    EnsureDataSyncedResponse,
 )
 from api.services.stock_service import (
     StockDataService,
@@ -528,6 +532,209 @@ async def get_sync_status(
     return APIResponse(
         data=SyncStatusResponse.model_validate(sync_status),
     )
+
+
+# =========================================================================
+# Gap Filling Endpoints (Data Sync on Page Access)
+# =========================================================================
+
+
+@router.get("/{symbol}/gaps")
+async def analyze_gaps(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+) -> APIResponse[GapAnalysisResponse]:
+    """
+    Analyze data gaps for a stock without performing sync.
+
+    This endpoint performs a dry-run analysis to check:
+    - Whether data exists in the database
+    - What sync case applies (no_data, gap_detected, up_to_date)
+    - What date range needs to be synced
+    - Estimated number of records to sync
+
+    Use this to understand the gap status before triggering a sync.
+    """
+    service = StockDataService(db)
+
+    try:
+        result = await service.check_and_report_gaps(symbol)
+
+        if not result.get("exists"):
+            return APIResponse(
+                message="Stock not found",
+                data=GapAnalysisResponse(
+                    symbol=symbol.upper(),
+                    exists=False,
+                    message=result.get("message", "Stock not found in database"),
+                ),
+            )
+
+        # Build data summary if available
+        data_summary = None
+        if result.get("data_summary"):
+            ds = result["data_summary"]
+            data_summary = DataSummaryResponse(
+                symbol=ds["symbol"],
+                stock_id=ds["stock_id"],
+                has_data=ds["has_data"],
+                first_date=ds.get("first_date"),
+                last_date=ds.get("last_date"),
+                count=ds.get("count", 0),
+                listing_date=ds.get("listing_date"),
+            )
+
+        # Build sync range if applicable
+        sync_range = None
+        if result.get("sync_range"):
+            sr = result["sync_range"]
+            sync_range = SyncRangeInfo(
+                start_date=sr.get("start_date"),
+                end_date=sr.get("end_date"),
+            )
+
+        return APIResponse(
+            message=f"Gap analysis completed: {result.get('sync_case', 'unknown')}",
+            data=GapAnalysisResponse(
+                symbol=symbol.upper(),
+                exists=True,
+                sync_case=result.get("sync_case"),
+                case_description=result.get("case_description"),
+                needs_sync=result.get("needs_sync", False),
+                data_summary=data_summary,
+                sync_range=sync_range,
+                estimated_records=result.get("estimated_records"),
+            ),
+        )
+    finally:
+        await service.close()
+
+
+@router.post("/{symbol}/ensure-synced")
+async def ensure_data_synced(
+    symbol: str,
+    auto_sync: bool = Query(True, description="Automatically sync if gap detected"),
+    db: AsyncSession = Depends(get_db),
+) -> APIResponse[EnsureDataSyncedResponse]:
+    """
+    Ensure stock price data is synced (Gap Filling on page access).
+
+    This endpoint implements the Gap Filling strategy triggered when
+    a user accesses the stock detail page:
+
+    **Gap Filling Cases:**
+    - **Case A (no_data)**: No data exists → Full collection from listing_date to yesterday
+    - **Case B (gap_detected)**: Last saved date < yesterday → Append missing dates
+    - **Case C (up_to_date)**: Last saved date >= yesterday → No action
+
+    If `auto_sync=true` (default), the sync is performed automatically
+    for Case A and Case B. Set to `false` to only check status without syncing.
+
+    This is the main entry point for frontend to ensure data is available
+    when displaying stock detail pages.
+    """
+    service = StockDataService(db)
+
+    try:
+        result = await service.ensure_data_synced(symbol, auto_sync=auto_sync)
+
+        # Build data summary
+        data_summary = None
+        if result.get("data_summary"):
+            ds = result["data_summary"]
+            data_summary = DataSummaryResponse(
+                symbol=ds["symbol"],
+                stock_id=ds["stock_id"],
+                has_data=ds["has_data"],
+                first_date=ds.get("first_date"),
+                last_date=ds.get("last_date"),
+                count=ds.get("count", 0),
+                listing_date=ds.get("listing_date"),
+            )
+
+        # Build sync range
+        sync_range = None
+        if result.get("sync_range"):
+            sr = result["sync_range"]
+            sync_range = SyncRangeInfo(
+                start_date=sr.get("start_date"),
+                end_date=sr.get("end_date"),
+            )
+
+        # Build sync result if sync was performed
+        sync_result = None
+        if result.get("sync_result"):
+            sr = result["sync_result"]
+            sync_result = StockSyncResponse(
+                symbol=sr["symbol"],
+                sync_case=sr["sync_case"],
+                synced_count=sr["synced_count"],
+                start_date=sr.get("start_date"),
+                end_date=sr.get("end_date"),
+                source=sr.get("source"),
+                message=sr.get("message"),
+            )
+
+        return APIResponse(
+            message=result.get("message", "Sync check completed"),
+            data=EnsureDataSyncedResponse(
+                symbol=symbol.upper(),
+                sync_case=result["sync_case"],
+                needs_sync=result["needs_sync"],
+                synced=result.get("synced", False),
+                data_summary=data_summary,
+                sync_range=sync_range,
+                sync_result=sync_result,
+                sync_error=result.get("sync_error"),
+                message=result.get("message"),
+            ),
+        )
+    except StockDataFetchError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ensure sync failed: {str(e)}")
+    finally:
+        await service.close()
+
+
+@router.get("/{symbol}/data-summary")
+async def get_data_summary(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+) -> APIResponse[DataSummaryResponse | None]:
+    """
+    Get a summary of stored price data for a stock.
+
+    Returns:
+    - First and last price dates (first_date = earliest, last_date = last_saved_date)
+    - Total count of price records
+    - Stock's listing date (for reference)
+
+    This is useful for understanding what data is currently available
+    before deciding whether to sync.
+    """
+    service = StockDataService(db)
+
+    try:
+        result = await service.get_price_data_summary(symbol)
+
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+
+        return APIResponse(
+            message="Data summary retrieved",
+            data=DataSummaryResponse(
+                symbol=result["symbol"],
+                stock_id=result["stock_id"],
+                has_data=result["has_data"],
+                first_date=result.get("first_date"),
+                last_date=result.get("last_date"),
+                count=result.get("count", 0),
+                listing_date=result.get("listing_date"),
+            ),
+        )
+    finally:
+        await service.close()
 
 
 # =========================================================================

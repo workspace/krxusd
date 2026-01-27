@@ -193,3 +193,55 @@ class SyncStatusResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# =========================================================================
+# Gap Filling / Data Summary Schemas
+# =========================================================================
+
+
+class SyncRangeInfo(BaseModel):
+    """Sync date range information"""
+
+    start_date: str | None = Field(None, description="Start date for sync (YYYY-MM-DD)")
+    end_date: str | None = Field(None, description="End date for sync (YYYY-MM-DD)")
+
+
+class DataSummaryResponse(BaseModel):
+    """Stock price data summary"""
+
+    symbol: str = Field(..., description="Stock ticker symbol")
+    stock_id: int = Field(..., description="Stock database ID")
+    has_data: bool = Field(..., description="Whether any data exists")
+    first_date: str | None = Field(None, description="Earliest data date")
+    last_date: str | None = Field(None, description="Latest data date (last_saved_date)")
+    count: int = Field(0, description="Number of price records")
+    listing_date: str | None = Field(None, description="Stock listing date (IPO)")
+
+
+class GapAnalysisResponse(BaseModel):
+    """Gap analysis report without syncing"""
+
+    symbol: str = Field(..., description="Stock ticker symbol")
+    exists: bool = Field(..., description="Whether stock exists in database")
+    sync_case: str | None = Field(None, description="Gap filling case: no_data, gap_detected, up_to_date")
+    case_description: str | None = Field(None, description="Human-readable case description")
+    needs_sync: bool = Field(False, description="Whether sync is needed")
+    data_summary: DataSummaryResponse | None = Field(None, description="Current data summary")
+    sync_range: SyncRangeInfo | None = Field(None, description="Date range that needs syncing")
+    estimated_records: int | None = Field(None, description="Estimated records to sync")
+    message: str | None = Field(None, description="Additional message")
+
+
+class EnsureDataSyncedResponse(BaseModel):
+    """Response for ensure_data_synced endpoint (auto-sync on page access)"""
+
+    symbol: str = Field(..., description="Stock ticker symbol")
+    sync_case: str = Field(..., description="Gap filling case: no_data, gap_detected, up_to_date")
+    needs_sync: bool = Field(..., description="Whether sync was/is needed")
+    synced: bool = Field(False, description="Whether sync was performed")
+    data_summary: DataSummaryResponse | None = Field(None, description="Current data summary")
+    sync_range: SyncRangeInfo | None = Field(None, description="Date range synced/to-sync")
+    sync_result: StockSyncResponse | None = Field(None, description="Sync result if performed")
+    sync_error: str | None = Field(None, description="Error message if sync failed")
+    message: str | None = Field(None, description="Status message")

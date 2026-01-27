@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 CACHE_TTL_REALTIME = 120  # 2 minutes for real-time stock price
 CACHE_TTL_DAILY = 300  # 5 minutes for daily data
 DEFAULT_HISTORY_DAYS = 365  # Default days to fetch for initial sync
+MAX_HISTORY_YEARS = 10  # Maximum years for historical data collection
 
 
 class SyncCase(Enum):
@@ -450,6 +451,139 @@ class StockDataService:
     # Gap Filling Strategy Implementation
     # =========================================================================
 
+    async def get_last_saved_date(
+        self,
+        symbol: str,
+    ) -> date | None:
+        """
+        Get the last saved date for a stock's price data.
+
+        This is the key query for Gap Filling strategy to determine
+        what data needs to be collected.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            The last price date in database, or None if no data exists
+        """
+        stock = await self.get_stock_by_symbol(symbol)
+        if not stock:
+            return None
+
+        query = (
+            select(func.max(StockPrice.price_date))
+            .where(StockPrice.stock_id == stock.id)
+        )
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_first_saved_date(
+        self,
+        symbol: str,
+    ) -> date | None:
+        """
+        Get the first (earliest) saved date for a stock's price data.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            The earliest price date in database, or None if no data exists
+        """
+        stock = await self.get_stock_by_symbol(symbol)
+        if not stock:
+            return None
+
+        query = (
+            select(func.min(StockPrice.price_date))
+            .where(StockPrice.stock_id == stock.id)
+        )
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_price_data_summary(
+        self,
+        symbol: str,
+    ) -> dict[str, Any] | None:
+        """
+        Get a summary of price data for a stock.
+
+        Returns:
+            dict with first_date, last_date, count, and gap analysis
+        """
+        stock = await self.get_stock_by_symbol(symbol)
+        if not stock:
+            return None
+
+        # Get date range and count
+        query = select(
+            func.min(StockPrice.price_date).label("first_date"),
+            func.max(StockPrice.price_date).label("last_date"),
+            func.count(StockPrice.id).label("count"),
+        ).where(StockPrice.stock_id == stock.id)
+
+        result = await self.db.execute(query)
+        row = result.one_or_none()
+
+        if not row or row.count == 0:
+            return {
+                "symbol": symbol,
+                "stock_id": stock.id,
+                "has_data": False,
+                "first_date": None,
+                "last_date": None,
+                "count": 0,
+                "listing_date": stock.listing_date.isoformat() if stock.listing_date else None,
+            }
+
+        return {
+            "symbol": symbol,
+            "stock_id": stock.id,
+            "has_data": True,
+            "first_date": row.first_date.isoformat() if row.first_date else None,
+            "last_date": row.last_date.isoformat() if row.last_date else None,
+            "count": row.count,
+            "listing_date": stock.listing_date.isoformat() if stock.listing_date else None,
+        }
+
+    def _get_yesterday(self) -> date:
+        """Get yesterday's date, accounting for weekends/holidays."""
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        return yesterday
+
+    def _calculate_sync_start_date(
+        self,
+        listing_date: date | None,
+        default_days: int = DEFAULT_HISTORY_DAYS,
+    ) -> date:
+        """
+        Calculate the appropriate start date for data collection.
+
+        For Case A (no data), we should collect from:
+        - listing_date if available
+        - today - default_days otherwise
+
+        But we cap at MAX_HISTORY_YEARS to avoid too much data.
+
+        Args:
+            listing_date: Stock's listing date (IPO date)
+            default_days: Default number of days if no listing date
+
+        Returns:
+            The start date for data collection
+        """
+        today = date.today()
+        max_start = today - timedelta(days=MAX_HISTORY_YEARS * 365)
+
+        if listing_date:
+            # Use listing date but not earlier than max history limit
+            return max(listing_date, max_start)
+        else:
+            # Use default days
+            return today - timedelta(days=default_days)
+
     async def analyze_sync_status(
         self,
         stock_id: int,
@@ -458,49 +592,69 @@ class StockDataService:
         """
         Analyze sync status to determine gap filling case.
 
+        Gap Filling Strategy:
+        - Case A (No Data): No price data exists in DB
+          -> Full collection from listing_date (or default history) to yesterday
+        - Case B (Gap Detected): last_saved_date < yesterday
+          -> Collect only missing dates: last_saved_date + 1 to yesterday
+        - Case C (Up-to-date): last_saved_date >= yesterday
+          -> No sync needed
+
         Args:
             stock_id: Stock database ID
             data_type: Type of data to analyze ('daily_price', etc.)
 
         Returns:
             Tuple of (SyncCase, start_date_to_sync, end_date_to_sync)
-            - Case A: Returns (CASE_A, oldest_needed_date, today)
-            - Case B: Returns (CASE_B, gap_start_date, today)
+            - Case A: Returns (CASE_A, listing_date_or_default, yesterday)
+            - Case B: Returns (CASE_B, last_saved_date + 1, yesterday)
             - Case C: Returns (CASE_C, None, None)
         """
-        today = date.today()
+        yesterday = self._get_yesterday()
+
+        # Get the stock to access listing_date
+        query = select(Stock).where(Stock.id == stock_id)
+        result = await self.db.execute(query)
+        stock = result.scalar_one_or_none()
+
+        if not stock:
+            logger.warning(f"Stock {stock_id}: Not found")
+            return SyncCase.CASE_C_UP_TO_DATE, None, None
 
         # Get the latest price date from database
-        query = (
+        price_query = (
             select(func.max(StockPrice.price_date))
             .where(StockPrice.stock_id == stock_id)
         )
-        result = await self.db.execute(query)
-        last_price_date = result.scalar_one_or_none()
+        price_result = await self.db.execute(price_query)
+        last_price_date = price_result.scalar_one_or_none()
 
-        # Case A: No data exists
+        # Case A: No data exists -> Full collection from listing_date to yesterday
         if last_price_date is None:
-            start_date = today - timedelta(days=DEFAULT_HISTORY_DAYS)
+            start_date = self._calculate_sync_start_date(stock.listing_date)
             logger.info(
-                f"Stock {stock_id}: Case A - No data, full collection from {start_date}"
+                f"Stock {stock.symbol} ({stock_id}): Case A - No data, "
+                f"full collection from {start_date} to {yesterday}"
             )
-            return SyncCase.CASE_A_NO_DATA, start_date, today
+            return SyncCase.CASE_A_NO_DATA, start_date, yesterday
 
-        # Check if we need to sync (gap exists or not up to date)
-        # Note: We check against "today - 1" for business days consideration
-        # but fetch up to today to account for potential market open
-        if last_price_date >= today - timedelta(days=1):
-            # Case C: Up to date (within 1 day tolerance for weekends)
-            logger.info(f"Stock {stock_id}: Case C - Up to date ({last_price_date})")
+        # Case C: Up to date (last_saved_date >= yesterday)
+        # We consider it up-to-date if the last price date is yesterday or later
+        if last_price_date >= yesterday:
+            logger.info(
+                f"Stock {stock.symbol} ({stock_id}): Case C - Up to date "
+                f"(last_saved_date={last_price_date}, yesterday={yesterday})"
+            )
             return SyncCase.CASE_C_UP_TO_DATE, None, None
 
-        # Case B: Gap detected
+        # Case B: Gap detected -> Collect only missing dates
         # Start from the day after last price date
         gap_start = last_price_date + timedelta(days=1)
         logger.info(
-            f"Stock {stock_id}: Case B - Gap detected, sync from {gap_start} to {today}"
+            f"Stock {stock.symbol} ({stock_id}): Case B - Gap detected, "
+            f"sync from {gap_start} to {yesterday}"
         )
-        return SyncCase.CASE_B_GAP_DETECTED, gap_start, today
+        return SyncCase.CASE_B_GAP_DETECTED, gap_start, yesterday
 
     async def sync_stock_prices(
         self,
@@ -512,10 +666,15 @@ class StockDataService:
         """
         Sync stock prices using Gap Filling strategy.
 
+        Gap Filling Strategy:
+        - Case A (no_data): No data exists → Full collection from listing_date to yesterday
+        - Case B (gap_detected): Gap in data → Collect only missing dates (append)
+        - Case C (up_to_date): Data is current → No action needed
+
         Args:
             symbol: Stock ticker symbol
             start_date: Optional start date (auto-determined if not provided)
-            end_date: Optional end date (defaults to today)
+            end_date: Optional end date (defaults to yesterday)
             force_full_sync: If True, ignore gap analysis and do full sync
 
         Returns:
@@ -541,16 +700,28 @@ class StockDataService:
                 }
         else:
             if force_full_sync:
+                # For force full sync, use listing_date or default
                 start_date = (
                     start_date
-                    or date.today() - timedelta(days=DEFAULT_HISTORY_DAYS)
+                    or self._calculate_sync_start_date(stock.listing_date)
                 )
                 sync_case = SyncCase.CASE_A_NO_DATA
             else:
                 sync_case = SyncCase.CASE_B_GAP_DETECTED
 
         if end_date is None:
-            end_date = date.today()
+            end_date = self._get_yesterday()
+
+        # Validate date range
+        if start_date > end_date:
+            return {
+                "symbol": symbol,
+                "sync_case": sync_case.value,
+                "synced_count": 0,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "message": "Invalid date range: start_date > end_date",
+            }
 
         # Update sync status to 'syncing'
         await self._update_sync_status(stock.id, "daily_price", "syncing")
@@ -572,7 +743,7 @@ class StockDataService:
                     "synced_count": 0,
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat(),
-                    "message": "No data available for the period",
+                    "message": "No trading data available for the period (may be holidays/weekends)",
                 }
 
             # Get exchange rates for USD conversion
@@ -580,20 +751,23 @@ class StockDataService:
                 [d["price_date"] for d in historical_data]
             )
 
-            # Save to database
+            # Save to database (batch insert/append)
             synced_count = await self._save_prices_batch(
                 stock.id, historical_data, exchange_rates
             )
 
+            # Determine actual last synced date from the data
+            actual_last_date = max(d["price_date"] for d in historical_data)
+
             # Update sync status to 'completed'
             await self._update_sync_status(
                 stock.id, "daily_price", "completed",
-                last_sync_date=end_date
+                last_sync_date=actual_last_date
             )
 
             logger.info(
                 f"Synced {synced_count} prices for {symbol} "
-                f"({start_date} to {end_date})"
+                f"({start_date} to {actual_last_date}) [Case: {sync_case.value}]"
             )
 
             return {
@@ -601,7 +775,7 @@ class StockDataService:
                 "sync_case": sync_case.value,
                 "synced_count": synced_count,
                 "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
+                "end_date": actual_last_date.isoformat(),
                 "source": historical_data[0].get("source", "unknown"),
             }
 
@@ -611,6 +785,7 @@ class StockDataService:
                 stock.id, "daily_price", "failed",
                 error_message=str(e)[:500]
             )
+            logger.error(f"Sync failed for {symbol}: {e}")
             raise
 
     async def _fetch_historical_prices(
@@ -950,6 +1125,144 @@ class StockDataService:
 
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
+
+    # =========================================================================
+    # Auto Sync on Page Access (Gap Filling Trigger)
+    # =========================================================================
+
+    async def ensure_data_synced(
+        self,
+        symbol: str,
+        auto_sync: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Ensure stock price data is synced when user accesses stock detail page.
+
+        This is the main entry point for Gap Filling on page access:
+        1. Check last_saved_date in database
+        2. Determine the sync case (A/B/C)
+        3. If auto_sync=True, trigger sync for Case A or Case B
+        4. Return sync status and recommendation
+
+        Args:
+            symbol: Stock ticker symbol
+            auto_sync: If True, automatically trigger sync when gap detected
+
+        Returns:
+            dict with sync status, case, and any sync results
+        """
+        symbol = symbol.upper()
+
+        # Get or create stock record
+        stock = await self.get_stock_by_symbol(symbol)
+        if not stock:
+            # Create the stock first
+            stock = await self.get_or_create_stock(symbol)
+
+        # Analyze sync status
+        sync_case, start_date, end_date = await self.analyze_sync_status(stock.id)
+
+        # Get current data summary
+        summary = await self.get_price_data_summary(symbol)
+
+        result: dict[str, Any] = {
+            "symbol": symbol,
+            "sync_case": sync_case.value,
+            "needs_sync": sync_case != SyncCase.CASE_C_UP_TO_DATE,
+            "data_summary": summary,
+        }
+
+        # If up to date, just return status
+        if sync_case == SyncCase.CASE_C_UP_TO_DATE:
+            result["message"] = "Data is up to date, no sync needed"
+            return result
+
+        # Add sync range information
+        result["sync_range"] = {
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+        }
+
+        # If auto_sync is enabled, perform the sync
+        if auto_sync:
+            try:
+                sync_result = await self.sync_stock_prices(
+                    symbol=symbol,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                result["sync_result"] = sync_result
+                result["synced"] = True
+                result["message"] = (
+                    f"Auto-synced {sync_result['synced_count']} records "
+                    f"({sync_case.value})"
+                )
+            except Exception as e:
+                result["synced"] = False
+                result["sync_error"] = str(e)
+                result["message"] = f"Auto-sync failed: {str(e)}"
+                logger.error(f"Auto-sync failed for {symbol}: {e}")
+        else:
+            result["synced"] = False
+            result["message"] = (
+                f"Sync needed ({sync_case.value}): "
+                f"{start_date} to {end_date}"
+            )
+
+        return result
+
+    async def check_and_report_gaps(
+        self,
+        symbol: str,
+    ) -> dict[str, Any]:
+        """
+        Check for data gaps and report without syncing.
+
+        Useful for dry-run analysis or when auto-sync is disabled.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            dict with gap analysis results
+        """
+        symbol = symbol.upper()
+
+        stock = await self.get_stock_by_symbol(symbol)
+        if not stock:
+            return {
+                "symbol": symbol,
+                "exists": False,
+                "message": "Stock not found in database",
+            }
+
+        sync_case, start_date, end_date = await self.analyze_sync_status(stock.id)
+        summary = await self.get_price_data_summary(symbol)
+
+        # Calculate estimated records to sync
+        estimated_records = 0
+        if start_date and end_date:
+            # Rough estimate: ~252 trading days per year
+            total_days = (end_date - start_date).days
+            estimated_records = int(total_days * 252 / 365)
+
+        return {
+            "symbol": symbol,
+            "exists": True,
+            "sync_case": sync_case.value,
+            "case_description": {
+                SyncCase.CASE_A_NO_DATA.value: "No data exists - full collection needed",
+                SyncCase.CASE_B_GAP_DETECTED.value: "Gap detected - partial collection needed",
+                SyncCase.CASE_C_UP_TO_DATE.value: "Data is up to date",
+            }.get(sync_case.value, "Unknown case"),
+            "needs_sync": sync_case != SyncCase.CASE_C_UP_TO_DATE,
+            "data_summary": summary,
+            "sync_range": {
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+            } if start_date else None,
+            "estimated_records": estimated_records if estimated_records > 0 else None,
+        }
 
 
 # Factory function for dependency injection
