@@ -1,5 +1,5 @@
 """Stock-related schemas."""
-from datetime import date
+import datetime
 from pydantic import BaseModel, Field
 
 
@@ -23,7 +23,7 @@ class StockSearchResult(BaseModel):
 
 class StockPriceHistory(BaseModel):
     """Single day OHLCV data."""
-    date: date
+    date: datetime.date
     open: float
     high: float
     low: float
@@ -33,7 +33,7 @@ class StockPriceHistory(BaseModel):
 
 class UsdConvertedData(BaseModel):
     """USD converted stock price data - 핵심 데이터 구조."""
-    date: date
+    date: datetime.date
     krw_close: float = Field(..., description="KRW closing price")
     exchange_rate: float = Field(..., description="USD/KRW exchange rate")
     usd_close: float = Field(..., description="USD converted price (krw_close / exchange_rate)")

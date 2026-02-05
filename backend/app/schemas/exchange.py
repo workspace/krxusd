@@ -1,19 +1,19 @@
 """Exchange rate schemas."""
-from datetime import date
+import datetime
 from pydantic import BaseModel, Field
 
 
 class ExchangeRateResponse(BaseModel):
     """Current exchange rate response."""
     rate: float = Field(..., description="USD/KRW exchange rate")
-    date: date = Field(..., description="Rate date")
+    date: datetime.date = Field(..., description="Rate date")
     change: float = Field(..., description="Change from previous day")
     change_percent: float = Field(..., description="Percent change from previous day")
 
 
 class ExchangeHistoryItem(BaseModel):
     """Single day exchange rate data."""
-    date: date
+    date: datetime.date
     open: float
     high: float
     low: float
