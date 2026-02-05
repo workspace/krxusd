@@ -68,3 +68,16 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Database
+*.sqlite
+*.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Redis
+dump.rdb

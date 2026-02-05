@@ -1,84 +1,44 @@
-services:
-  krxusd-web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: krxusd-web
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://krxusd-api:8000
-    depends_on:
-      - krxusd-api
-    networks:
-      - krxusd-network
+version: '3.8'
 
-  krxusd-api:
+services:
+  # Backend API
+  api:
     build:
-      context: .
-      dockerfile: Dockerfile.api
-    container_name: krxusd-api
-    restart: unless-stopped
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://krxusd:krxusd@krxusd-db:5432/krxusd
-      - REDIS_URL=redis://krxusd-redis:6379
-      - ENVIRONMENT=production
-    depends_on:
-      krxusd-db:
-        condition: service_healthy
-      krxusd-redis:
-        condition: service_healthy
-    networks:
-      - krxusd-network
-
-  krxusd-db:
-    image: postgres:16-alpine
-    container_name: krxusd-db
+      - USE_MOCK=true
+      - CORS_ORIGINS=["http://localhost:3000"]
     restart: unless-stopped
-    environment:
-      - POSTGRES_USER=krxusd
-      - POSTGRES_PASSWORD=krxusd
-      - POSTGRES_DB=krxusd
-      - PGDATA=/var/lib/postgresql/data/pgdata
-    volumes:
-      - krxusd-db-data:/var/lib/postgresql/data
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U krxusd -d krxusd"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - krxusd-network
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  krxusd-redis:
-    image: redis:7-alpine
-    container_name: krxusd-redis
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+    depends_on:
+      - api
     restart: unless-stopped
+
+  # Redis (optional - for caching)
+  redis:
+    image: redis:7-alpine
     ports:
       - "6379:6379"
+    restart: unless-stopped
     volumes:
-      - krxusd-redis-data:/data
-      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    command: redis-server /usr/local/etc/redis/redis.conf
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - krxusd-network
-
-networks:
-  krxusd-network:
-    driver: bridge
+      - redis_data:/data
 
 volumes:
-  krxusd-db-data:
-  krxusd-redis-data:
+  redis_data:
