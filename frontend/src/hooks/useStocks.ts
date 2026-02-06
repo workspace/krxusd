@@ -26,8 +26,8 @@ export function usePopularStocks(limit = 10) {
   return useQuery({
     queryKey: ['stocks', 'popular', limit],
     queryFn: () => getPopularStocks(limit),
-    staleTime: 1000 * 60, // 1 minute
-    refetchInterval: 1000 * 60 * 5, // Refetch every 5 minutes
+    staleTime: 1000 * 30,
+    refetchInterval: 1000 * 60,
   });
 }
 
@@ -64,7 +64,7 @@ export function useStockCurrentUsd(code: string) {
     queryKey: ['stocks', 'usd', 'current', code],
     queryFn: () => getStockCurrentUsd(code),
     enabled: !!code,
-    staleTime: 1000 * 60, // 1 minute
-    refetchInterval: 1000 * 60 * 5, // Refetch every 5 minutes
+    staleTime: 1000 * 30,
+    refetchInterval: 1000 * 60,
   });
 }

@@ -10,8 +10,8 @@ export function useCurrentExchangeRate() {
   return useQuery({
     queryKey: ['exchangeRate', 'current'],
     queryFn: getCurrentExchangeRate,
-    staleTime: 1000 * 60, // 1 minute
-    refetchInterval: 1000 * 60 * 5, // Refetch every 5 minutes
+    staleTime: 1000 * 30,
+    refetchInterval: 1000 * 60,
   });
 }
 
