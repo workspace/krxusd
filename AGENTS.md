@@ -277,33 +277,41 @@ krxusd/
 
 ### Phase 1: 프로젝트 초기화 (Day 1)
 - [x] AGENTS.md 작성
-- [ ] 기존 코드 정리
-- [ ] Next.js + shadcn/ui 설정
-- [ ] FastAPI 기본 구조 설정
-- [ ] Mock 모드 구현
+- [x] 기존 코드 정리
+- [x] Next.js + shadcn/ui 설정
+- [x] FastAPI 기본 구조 설정
+- [x] Mock 모드 구현
 
 ### Phase 2: 백엔드 API (Day 1-2)
-- [ ] 환율 API 구현 + 테스트
-- [ ] 주가 API 구현 + 테스트
-- [ ] USD 환산 API 구현 + 테스트
-- [ ] Mock 데이터 생성
+- [x] 환율 API 구현 + 테스트
+- [x] 주가 API 구현 + 테스트
+- [x] USD 환산 API 구현 + 테스트
+- [x] Mock 데이터 생성
 
 ### Phase 3: 프론트엔드 기본 (Day 2-3)
-- [ ] 레이아웃 구성
-- [ ] 메인 대시보드 UI
-- [ ] USD 환산 차트 컴포넌트 (핵심!)
-- [ ] API 연동
+- [x] 레이아웃 구성
+- [x] 메인 대시보드 UI
+- [x] USD 환산 차트 컴포넌트 (핵심!)
+- [x] API 연동
 
 ### Phase 4: 검색 및 상세 (Day 3-4)
-- [ ] 종목 검색 기능
-- [ ] 종목 상세 페이지
-- [ ] 차트 기간 선택
+- [x] 종목 검색 기능
+- [x] 종목 상세 페이지
+- [x] 차트 기간 선택 (1M/3M/6M/1Y/5Y/MAX)
 
 ### Phase 5: 마무리 (Day 4-5)
-- [ ] 반응형 UI
-- [ ] 다크 모드
-- [ ] SEO 최적화
-- [ ] Docker 설정
+- [x] 반응형 UI (모바일 최적화)
+- [x] 다크 모드 (next-themes)
+- [x] SEO 최적화 (OG tags, Twitter cards, title template)
+- [x] Docker 설정
+
+### Phase 6: 금융 분석 기능 (추가)
+- [x] 정규화 수익률 비교 차트 (KRW vs USD, 100 기준)
+- [x] 환율 영향 분석 (기여분해: 주가 수익 vs 환율 효과)
+- [x] 변동성 지표 (연환산 표준편차, KRW/USD 비교)
+- [x] 최대 낙폭 분석 (MDD, 드로다운 시계열 차트)
+- [x] 52주 고저 (USD/KRW 종가 기준)
+- [x] 종목 상세 페이지 핵심 지표 카드
 
 ## 9. 성공 기준
 
