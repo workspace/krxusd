@@ -1,7 +1,15 @@
 """Exchange rate service with Mock support."""
 from datetime import date, timedelta
+import math
 import random
 from typing import Optional
+
+
+def _isnan(v: object) -> bool:
+    try:
+        return math.isnan(float(v))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return True
 
 from app.config import settings
 from app.schemas.exchange import (
@@ -129,13 +137,15 @@ class ExchangeService:
             if df.empty:
                 return self._mock_history(start_date, end_date)
             
+            df = df.dropna(subset=['Close'])
+            
             data = []
             for idx, row in df.iterrows():
                 data.append(ExchangeHistoryItem(
                     date=idx.date(),
-                    open=round(float(row['Open']), 2),
-                    high=round(float(row['High']), 2),
-                    low=round(float(row['Low']), 2),
+                    open=round(float(row['Open']), 2) if not _isnan(row['Open']) else round(float(row['Close']), 2),
+                    high=round(float(row['High']), 2) if not _isnan(row['High']) else round(float(row['Close']), 2),
+                    low=round(float(row['Low']), 2) if not _isnan(row['Low']) else round(float(row['Close']), 2),
                     close=round(float(row['Close']), 2),
                 ))
             
