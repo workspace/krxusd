@@ -5,24 +5,30 @@
  */
 'use client';
 
-import { use, useMemo } from 'react';
+import { use, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useStockInfo, useStockUsdHistory, useCurrentExchangeRate } from '@/hooks';
 import { UsdPriceChart, StockSearch } from '@/components';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   DollarSign, 
   TrendingUp, 
   TrendingDown, 
   ArrowLeft,
-  Calendar
+  Calendar,
+  Moon,
+  Sun,
 } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { calculateAnalysis } from '@/lib/analysis';
+
+const PERIODS = ['1M', '3M', '6M', '1Y', '5Y', 'MAX'] as const;
+type Period = (typeof PERIODS)[number];
 
 // Date helpers
-function getDateRange(period: string): { start: string; end: string } {
+function getDateRange(period: Period): { start: string; end: string } {
   const end = new Date();
   const start = new Date();
   
@@ -45,8 +51,6 @@ function getDateRange(period: string): { start: string; end: string } {
     case 'MAX':
       start.setFullYear(start.getFullYear() - 10);
       break;
-    default:
-      start.setMonth(start.getMonth() - 3);
   }
   
   return {
@@ -61,9 +65,9 @@ export default function StockDetailPage({
   params: Promise<{ code: string }> 
 }) {
   const { code } = use(params);
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>('3M');
   
-  // Default period: 3 months
-  const dateRange = useMemo(() => getDateRange('3M'), []);
+  const dateRange = useMemo(() => getDateRange(selectedPeriod), [selectedPeriod]);
   
   // Fetch data
   const { data: stockInfo, isLoading: infoLoading } = useStockInfo(code);
@@ -76,6 +80,11 @@ export default function StockDetailPage({
   
   const isLoading = infoLoading || historyLoading;
   const rate = exchangeRate?.rate || 1450;
+
+  const analysis = useMemo(() => {
+    if (!usdHistory?.data || usdHistory.data.length < 2) return null;
+    return calculateAnalysis(usdHistory.data);
+  }, [usdHistory]);
 
   if (isLoading) {
     return (
@@ -137,9 +146,8 @@ export default function StockDetailPage({
             <p className="text-muted-foreground">{stockInfo.code}</p>
           </div>
           
-          <div className="flex gap-6">
-            {/* USD Price Card */}
-            <Card className="min-w-[180px]">
+          <div className="flex flex-wrap gap-4">
+            <Card className="min-w-[150px] flex-1">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-primary" />
@@ -147,19 +155,18 @@ export default function StockDetailPage({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-primary">
+                <div className="text-2xl sm:text-3xl font-bold text-primary">
                   ${usdPrice.toFixed(2)}
                 </div>
               </CardContent>
             </Card>
             
-            {/* KRW Price Card */}
-            <Card className="min-w-[180px]">
+            <Card className="min-w-[150px] flex-1">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">KRW 현재가</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
+                <div className="text-xl sm:text-2xl font-bold">
                   ₩{stockInfo.price.toLocaleString()}
                 </div>
                 <Badge 
@@ -178,60 +185,143 @@ export default function StockDetailPage({
           </div>
         </div>
 
-        {/* USD Chart - 핵심 컴포넌트 */}
+        <div className="flex gap-2 mb-4">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setSelectedPeriod(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedPeriod === p
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+
         <UsdPriceChart
           data={usdHistory.data}
           stockName={stockInfo.name}
           stockCode={stockInfo.code}
         />
         
-        {/* Additional Info */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">거래량</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">거래량</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-xl font-semibold">
-                {stockInfo.volume.toLocaleString()}주
+              <div className="text-lg font-semibold">
+                {stockInfo.volume.toLocaleString()}
               </div>
             </CardContent>
           </Card>
           
           <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">현재 환율</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">현재 환율</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-xl font-semibold">
-                ₩{rate.toLocaleString()}
-              </div>
-              <p className="text-sm text-muted-foreground">USD/KRW</p>
+              <div className="text-lg font-semibold">₩{rate.toLocaleString()}</div>
             </CardContent>
           </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">데이터 기간</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>{usdHistory.count}일</span>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {dateRange.start} ~ {dateRange.end}
-              </p>
-            </CardContent>
-          </Card>
+
+          {analysis && (
+            <>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">USD 변동성 (연환산)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-lg font-semibold">
+                    {analysis.volatility.usd.toFixed(1)}%
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    KRW {analysis.volatility.krw.toFixed(1)}%
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">최대 낙폭 (MDD)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-lg font-semibold text-destructive">
+                    {analysis.drawdown.usdMax.toFixed(1)}%
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    KRW {analysis.drawdown.krwMax.toFixed(1)}%
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">52주 고가 (USD)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-lg font-semibold text-green-600 dark:text-green-400">
+                    ${analysis.high52w.usd.toFixed(2)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ₩{analysis.high52w.krw.toLocaleString()}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">52주 저가 (USD)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-lg font-semibold text-red-600 dark:text-red-400">
+                    ${analysis.low52w.usd.toFixed(2)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ₩{analysis.low52w.krw.toLocaleString()}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">환율 영향</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-lg font-semibold ${analysis.attribution.fxEffect >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {analysis.attribution.fxEffect >= 0 ? '+' : ''}{analysis.attribution.fxEffect.toFixed(2)}%
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    주가 {analysis.attribution.stockReturn >= 0 ? '+' : ''}{analysis.attribution.stockReturn.toFixed(2)}%
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">데이터 기간</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-lg font-semibold">{usdHistory.count}일</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
       </main>
     </div>
   );
 }
 
-// Header Component
 function Header() {
+  const { theme, setTheme } = useTheme();
+
   return (
     <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">
       <div className="container mx-auto px-4 py-4">
@@ -245,7 +335,16 @@ function Header() {
               <p className="text-xs text-muted-foreground">한국 주식 USD 환산</p>
             </div>
           </Link>
-          <StockSearch />
+          <div className="flex items-center gap-3">
+            <StockSearch />
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="p-2 rounded-lg hover:bg-muted transition-colors"
+            >
+              <Sun className="h-5 w-5 hidden dark:block" />
+              <Moon className="h-5 w-5 block dark:hidden" />
+            </button>
+          </div>
         </div>
       </div>
     </header>

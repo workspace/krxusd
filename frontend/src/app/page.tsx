@@ -1,16 +1,15 @@
-/**
- * KRXUSD - 메인 대시보드 페이지
- * 
- * 한국 주식의 USD 환산 가격을 보여주는 서비스
- */
+'use client';
+
 import Link from 'next/link';
 import { ExchangeRateCard, PopularStocksList, StockSearch } from '@/components';
-import { DollarSign, TrendingUp, BarChart3 } from 'lucide-react';
+import { DollarSign, TrendingUp, BarChart3, Moon, Sun } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 export default function HomePage() {
+  const { theme, setTheme } = useTheme();
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -23,18 +22,27 @@ export default function HomePage() {
                 <p className="text-xs text-muted-foreground">한국 주식 USD 환산</p>
               </div>
             </Link>
-            <StockSearch />
+            <div className="flex items-center gap-3">
+              <StockSearch />
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
+              >
+                <Sun className="h-5 w-5 hidden dark:block" />
+                <Moon className="h-5 w-5 block dark:hidden" />
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="py-12 px-4 bg-gradient-to-b from-muted/50 to-background">
+      <section className="py-8 sm:py-12 px-4 bg-gradient-to-b from-muted/50 to-background">
         <div className="container mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-4">
+          <h2 className="text-2xl sm:text-4xl font-bold mb-4">
             한국 주식의 <span className="text-primary">실제 달러 가치</span>를 확인하세요
           </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
+          <p className="text-sm sm:text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
             KRW 주가를 당일 환율로 나눈 USD 환산 차트로,
             원화 상승과 달러 가치 변동을 한눈에 비교할 수 있습니다.
           </p>
