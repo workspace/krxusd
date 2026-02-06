@@ -4,7 +4,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { getCurrentExchangeRate, getExchangeHistory } from '@/lib/api';
+import { getCurrentExchangeRate, getExchangeHistory, getExchangeAnalysis } from '@/lib/api';
 
 export function useCurrentExchangeRate() {
   return useQuery({
@@ -19,6 +19,14 @@ export function useExchangeHistory(start: string, end?: string) {
   return useQuery({
     queryKey: ['exchangeRate', 'history', start, end],
     queryFn: () => getExchangeHistory(start, end),
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useExchangeAnalysis() {
+  return useQuery({
+    queryKey: ['exchangeRate', 'analysis'],
+    queryFn: getExchangeAnalysis,
+    staleTime: 1000 * 60 * 10,
   });
 }

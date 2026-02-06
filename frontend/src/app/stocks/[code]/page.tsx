@@ -1,8 +1,9 @@
 'use client';
 
-import { use, useMemo, useState } from 'react';
+import { use, useMemo, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useStockInfo, useStockUsdHistory, useCurrentExchangeRate } from '@/hooks';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useStockInfo, useStockUsdHistory, useCurrentExchangeRate, useFavorites, useStockCorrelation } from '@/hooks';
 import { UsdPriceChart, StockSearch } from '@/components';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +23,9 @@ import {
   Moon,
   Sun,
   HelpCircle,
+  Star,
+  Share2,
+  Check,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { calculateAnalysis } from '@/lib/analysis';
@@ -79,7 +83,29 @@ export default function StockDetailPage({
   params: Promise<{ code: string }>;
 }) {
   const { code } = use(params);
-  const [selectedPeriod, setSelectedPeriod] = useState<Period>('3M');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [copied, setCopied] = useState(false);
+
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>(() => {
+    const p = searchParams.get('period');
+    return PERIODS.includes(p as Period) ? (p as Period) : '3M';
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedPeriod !== '3M') params.set('period', selectedPeriod);
+    const qs = params.toString();
+    router.replace(`/stocks/${code}${qs ? `?${qs}` : ''}`, { scroll: false });
+  }, [selectedPeriod, code, router]);
+
+  const handleShare = useCallback(() => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, []);
 
   const dateRange = useMemo(() => getDateRange(selectedPeriod), [selectedPeriod]);
 
@@ -90,6 +116,8 @@ export default function StockDetailPage({
     isFetching: historyFetching,
   } = useStockUsdHistory(code, dateRange.start, dateRange.end);
   const { data: exchangeRate } = useCurrentExchangeRate();
+  const { isFavorite, toggleFavorite, hydrated } = useFavorites();
+  const { data: correlation } = useStockCorrelation(code);
 
   const rate = exchangeRate?.rate || 1450;
 
@@ -156,6 +184,20 @@ export default function StockDetailPage({
               <div className="flex items-center gap-3">
                 <h1 className="text-3xl font-bold">{stockInfo.name}</h1>
                 <Badge variant="outline">{stockInfo.market}</Badge>
+                {hydrated && (
+                  <button
+                    onClick={() => toggleFavorite(code, stockInfo.name)}
+                    className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                  >
+                    <Star
+                      className={`h-5 w-5 ${
+                        isFavorite(code)
+                          ? 'fill-yellow-500 text-yellow-500'
+                          : 'text-muted-foreground'
+                      }`}
+                    />
+                  </button>
+                )}
               </div>
               <p className="text-muted-foreground">{stockInfo.code}</p>
             </div>
@@ -200,7 +242,7 @@ export default function StockDetailPage({
             </div>
           </div>
 
-          <div className="flex gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-4">
             {PERIODS.map((p) => (
               <button
                 key={p}
@@ -220,6 +262,15 @@ export default function StockDetailPage({
                 <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             )}
+            <div className="ml-auto">
+              <button
+                onClick={handleShare}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+              >
+                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Share2 className="h-4 w-4" />}
+                {copied ? '복사됨' : '공유'}
+              </button>
+            </div>
           </div>
 
           <div className={`transition-opacity duration-200 ${historyFetching ? 'opacity-50' : 'opacity-100'}`}>
@@ -258,6 +309,28 @@ export default function StockDetailPage({
                 <div className="text-lg font-semibold">₩{rate.toLocaleString()}</div>
               </CardContent>
             </Card>
+
+            {correlation && correlation.correlation !== null && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    환율 상관관계
+                    <InfoTip text="주가와 환율의 일일 수익률 상관계수입니다. +1에 가까우면 수출주(환율 상승 시 주가도 상승), -1에 가까우면 내수주 성격입니다." />
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-semibold">{correlation.correlation.toFixed(3)}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {correlation.interpretation}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    표본: {correlation.sample_size}일
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {analysis && (
               <>

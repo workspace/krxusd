@@ -11,6 +11,9 @@ import {
   getStockHistory,
   getStockUsdHistory,
   getStockCurrentUsd,
+  compareStocksUsd,
+  getIndexUsd,
+  getStockCorrelation,
 } from '@/lib/api';
 
 export function useStockSearch(query: string, limit = 20) {
@@ -67,5 +70,32 @@ export function useStockCurrentUsd(code: string) {
     enabled: !!code,
     staleTime: 1000 * 30,
     refetchInterval: 1000 * 60,
+  });
+}
+
+export function useCompareStocksUsd(codes: string[], start?: string, end?: string) {
+  return useQuery({
+    queryKey: ['stocks', 'compare', 'usd', codes, start, end],
+    queryFn: () => compareStocksUsd(codes, start, end),
+    enabled: codes.length > 0,
+    staleTime: 1000 * 60 * 5,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useIndexUsd(index: string, period: string = '1Y') {
+  return useQuery({
+    queryKey: ['stocks', 'index', 'usd', index, period],
+    queryFn: () => getIndexUsd(index, period),
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useStockCorrelation(code: string, start?: string) {
+  return useQuery({
+    queryKey: ['stocks', 'correlation', code, start],
+    queryFn: () => getStockCorrelation(code, start),
+    enabled: !!code,
+    staleTime: 1000 * 60 * 10,
   });
 }
