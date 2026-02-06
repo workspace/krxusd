@@ -39,17 +39,15 @@ function IndexCard({ index, label }: { index: string; label: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        <div className="text-2xl font-bold">${data.current_usd.toFixed(2)}</div>
-        <div className="text-sm text-muted-foreground">
-          ₩{data.current_krw.toLocaleString()}
-        </div>
+        <div className="text-2xl font-bold">{data.current_krw.toLocaleString()} <span className="text-base font-normal text-muted-foreground">pt</span></div>
         <div className="flex flex-wrap gap-2">
+          <Badge variant={krwPositive ? 'default' : 'destructive'} className="text-xs">
+            {krwPositive ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+            KRW {krwPositive ? '+' : ''}{data.change_krw.toFixed(1)}%
+          </Badge>
           <Badge variant={usdPositive ? 'default' : 'destructive'} className="text-xs">
             {usdPositive ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
             USD {usdPositive ? '+' : ''}{data.change_usd.toFixed(1)}%
-          </Badge>
-          <Badge variant={krwPositive ? 'default' : 'destructive'} className="text-xs">
-            KRW {krwPositive ? '+' : ''}{data.change_krw.toFixed(1)}%
           </Badge>
         </div>
         {data.fx_effect !== 0 && (
