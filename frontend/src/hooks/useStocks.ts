@@ -55,7 +55,8 @@ export function useStockUsdHistory(code: string, start: string, end?: string) {
     queryKey: ['stocks', 'usd', code, start, end],
     queryFn: () => getStockUsdHistory(code, start, end),
     enabled: !!code && !!start,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5,
+    placeholderData: (prev) => prev,
   });
 }
 
