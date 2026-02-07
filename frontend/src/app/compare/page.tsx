@@ -96,6 +96,59 @@ const PRESETS: Preset[] = [
       { code: '055550', name: '신한지주' },
     ],
   },
+  {
+    id: 'sp500-etf',
+    name: 'S&P500 ETF',
+    description: 'S&P500 추종 ETF 운용사별 비교',
+    stocks: [
+      { code: '360750', name: 'TIGER 미국S&P500' },
+      { code: '379800', name: 'KODEX 미국S&P500' },
+      { code: '360200', name: 'ACE 미국S&P500' },
+      { code: '379780', name: 'RISE 미국S&P500' },
+      { code: '433330', name: 'SOL 미국S&P500' },
+    ],
+  },
+  {
+    id: 'nasdaq100-etf',
+    name: '나스닥100 ETF',
+    description: '나스닥100 추종 ETF 운용사별 비교',
+    stocks: [
+      { code: '133690', name: 'TIGER 미국나스닥100' },
+      { code: '379810', name: 'KODEX 미국나스닥100' },
+      { code: '367380', name: 'ACE 미국나스닥100' },
+      { code: '368590', name: 'RISE 미국나스닥100' },
+    ],
+  },
+  {
+    id: 'us-dividend',
+    name: '미국배당다우존스',
+    description: '한국판 SCHD 운용사별 비교',
+    stocks: [
+      { code: '458730', name: 'TIGER 미국배당다우존스' },
+      { code: '446720', name: 'SOL 미국배당다우존스' },
+      { code: '402970', name: 'ACE 미국배당다우존스' },
+    ],
+  },
+  {
+    id: 'us-tech-top10',
+    name: '미국테크TOP10',
+    description: '미국 빅테크 집중투자 ETF 비교',
+    stocks: [
+      { code: '381170', name: 'TIGER 미국테크TOP10 INDXX' },
+      { code: '473460', name: 'SOL 미국테크TOP10' },
+      { code: '466920', name: 'ACE 미국빅테크TOP7 Plus' },
+    ],
+  },
+  {
+    id: 'covered-call',
+    name: '커버드콜',
+    description: '커버드콜 전략 ETF 비교',
+    stocks: [
+      { code: '441680', name: 'TIGER 미국나스닥100커버드콜(합성)' },
+      { code: '441640', name: 'KODEX 미국배당커버드콜액티브' },
+      { code: '482730', name: 'TIGER 미국S&P500타겟데일리커버드콜' },
+    ],
+  },
 ];
 
 function getDateRange(period: Period): { start: string; end: string } {
