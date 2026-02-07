@@ -3,7 +3,7 @@
 import { use, useMemo, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useStockInfo, useStockUsdHistory, useCurrentExchangeRate, useFavorites, useStockCorrelation } from '@/hooks';
+import { useStockInfo, useStockUsdHistory, useCurrentExchangeRate, useFavorites } from '@/hooks';
 import { UsdPriceChart, StockSearch } from '@/components';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -117,7 +117,6 @@ export default function StockDetailPage({
   } = useStockUsdHistory(code, dateRange.start, dateRange.end);
   const { data: exchangeRate } = useCurrentExchangeRate();
   const { isFavorite, toggleFavorite, hydrated } = useFavorites();
-  const { data: correlation } = useStockCorrelation(code);
 
   const rate = exchangeRate?.rate || 1450;
 
@@ -309,28 +308,6 @@ export default function StockDetailPage({
                 <div className="text-lg font-semibold">₩{rate.toLocaleString()}</div>
               </CardContent>
             </Card>
-
-            {correlation && correlation.correlation !== null && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    환율 상관관계
-                    <InfoTip text="주가와 환율의 일일 수익률 상관계수입니다. +1에 가까우면 수출주(환율 상승 시 주가도 상승), -1에 가까우면 내수주 성격입니다." />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-semibold">{correlation.correlation.toFixed(3)}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {correlation.interpretation}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    표본: {correlation.sample_size}일
-                  </p>
-                </CardContent>
-              </Card>
-            )}
 
             {analysis && (
               <>
