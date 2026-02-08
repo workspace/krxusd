@@ -1,0 +1,26 @@
+services:
+  api:
+    image: ghcr.io/workspace/krxusd/backend:latest
+    expose:
+      - "8000"
+    environment:
+      - USE_MOCK=${USE_MOCK:-false}
+      - CORS_ORIGINS=["http://localhost:${PORT:-3081}"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/workspace/krxusd/frontend:latest
+    ports:
+      - "${PORT:-3081}:3000"
+    environment:
+      - HOSTNAME=0.0.0.0
+      - BACKEND_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
