@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { Suspense, useState, useCallback, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCompareStocksUsd, useStockSearch } from '@/hooks';
@@ -245,6 +245,14 @@ function CompareSearchInput({ onSelect, selectedCodes }: {
 }
 
 export default function ComparePage() {
+  return (
+    <Suspense>
+      <ComparePageContent />
+    </Suspense>
+  );
+}
+
+function ComparePageContent() {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
